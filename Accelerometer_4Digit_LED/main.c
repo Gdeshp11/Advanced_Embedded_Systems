@@ -16,7 +16,7 @@
 #define g 0x10    //p1.4
 
 //Digit dots on LED
-#define DOT BIT2 //p1.2
+#define DOT BIT5 //p2.5
 
 #define ADC_INPUT BIT7 //p1.7 for ADC
 #define LED_DIGITS 4
@@ -32,7 +32,6 @@ typedef enum
     E_SEGMENT,
     F_SEGMENT,
     G_SEGMENT,
-    DIGIT_DOT
 } LED_SEGMENTS;
 
 //p1.7 for ADC
@@ -91,42 +90,24 @@ void main(void)
 {
     WDTCTL = WDTPW | WDTHOLD;       // stop watchdog timer
 
-    P2DIR |= DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4 + a;
-    P1DIR |= b + c + d + e + f + g + DOT;
+    P2DIR |= DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4 + a + DOT;
+    P1DIR |= b + c + d + e + f + g ;
 
-//    volatile unsigned int i = 0;
-//    unsigned int oldaverage = 0;
+    volatile unsigned int i = 0;
+    unsigned int oldaverage = 0;
     P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4); //all digits off by default
-    P1OUT |= b + c + d + e + f + g + DOT;
-    P2OUT |= a;
-//    configureAdc();
-//    unsigned int adc_val = read_adc();
-//    oldaverage = adc_val;
-//    display_digits(adc_val); //The problem with Running Average is that it there can be a "ramp up", displaying one value in beginning helps mitigate this
+    configureAdc();
+    unsigned int adc_val = read_adc();
+    oldaverage = adc_val;
+    display_digits(adc_val); //The problem with Running Average is that it there can be a "ramp up", displaying one value in beginning helps mitigate this
     while (1)
     {
 
 //        unsigned int adc_val = read_adc_median_filtered();
-//        unsigned int adc_val = read_adc();
-//        adc_val = read_adc_running_average_filter(oldaverage, 10);
-//        unsigned volatile int i = 0;
-//        P1OUT |= b + c + d + e + f + g + DOT;
-//        P2OUT |= a;
-
-        P2OUT = DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4;
-        P1OUT &= ~DOT;
-//        led_display_num(1);
-//        P1OUT &= ~b;
-//        _delay_cycles(100000);
-//        for(i=0;i<9999;i++)
-//        {
-//            display_digits(i);
-//            lit_led_segment(DIGIT_DOT);
-//            _delay_cycles(100000);
-//
-//        }
-//        display_digits(adc_val);
-//        oldaverage = adc_val;
+        unsigned int adc_val = read_adc();
+        adc_val = read_adc_running_average_filter(oldaverage, 10);
+        display_digits(adc_val);
+        oldaverage = adc_val;
     }
 }
 
@@ -214,8 +195,8 @@ unsigned int read_adc_running_average_filter(unsigned int oldaverage, unsigned i
 void led_display_num(unsigned val)
 {
     // turn off all segments first
-    P1OUT |= b + c + d + e + f + g + DOT;
-    P2OUT |= a;
+    P1OUT |= b + c + d + e + f + g;
+    P2OUT |= a + DOT;
     //For each number, light the needed segments using program lit_let_segment
     switch (val)
     {
@@ -356,11 +337,6 @@ void lit_led_segment(LED_SEGMENTS segment)
     case G_SEGMENT:
     {
         P1OUT &= ~g;
-        break;
-    }
-    case DIGIT_DOT:
-    {
-        P1OUT &= ~DOT;
         break;
     }
     default:
