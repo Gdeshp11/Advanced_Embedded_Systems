@@ -21,7 +21,7 @@
 #define ADC_INPUT BIT7 //p1.7 for ADC
 #define LED_DIGITS 4
 
-#define DIGDELAY 1000 //Number of cycles to delay for displaying each digit in display_digits
+#define DIGDELAY 2000 //Number of cycles to delay for displaying each digit in display_digits
 
 // to track which digits of led are on
 unsigned char digits_on = 0x00;
@@ -35,8 +35,39 @@ typedef enum
     E_SEGMENT,
     F_SEGMENT,
     G_SEGMENT,
-    DP
+    DP,
 } LED_SEGMENTS;
+
+
+// enum for states
+typedef enum
+{
+    rawX,
+    rawY,
+    rawZ,
+    g_x,
+    g_y,
+    g_z
+} STATES;
+
+//enum for numbers/characters on LED
+typedef enum
+{
+    NUM_0,
+    NUM_1,
+    NUM_2,
+    NUM_3,
+    NUM_4,
+    NUM_5,
+    NUM_6,
+    NUM_7,
+    NUM_8,
+    NUM_9,
+    CHAR_X,
+    CHAR_Y,
+    CHAR_Z,
+    CHAR_DASH
+} LED_CHARS;
 
 //p1.7 for ADC
 //p2.4 for LED pin 11 which is for A
@@ -68,7 +99,7 @@ unsigned int read_adc_running_average_filter(unsigned int oldaverage,
 //Idea from https://electronics.stackexchange.com/questions/157977/should-i-always-put-a-low-pass-filter-on-an-adc-input
 //Requires that the correct pins be declared on the top
 //*******************************************************************************
-void led_display_num(unsigned val);
+void led_display_num(LED_CHARS led_char);
 
 //******************************************************************************
 //Module Function lit_let_segment(), Last Revision date 9/22/2022, by Gandhar
@@ -79,6 +110,8 @@ void lit_led_segment(LED_SEGMENTS segment);
 void display_digits(unsigned int val, char axis);
 
 void turn_off_led_segments();
+
+void turn_off_led_digits();
 
 void main(void)
 {
@@ -104,7 +137,7 @@ void main(void)
 //        unsigned int adc_val = read_adc_median_filtered();
         unsigned int adc_val = read_adc();
         adc_val = read_adc_running_average_filter(oldaverage, 10);
-        display_digits(adc_val, 'z');
+        display_digits(adc_val, 'x');
         oldaverage = adc_val;
 
 
@@ -171,18 +204,22 @@ void turn_off_led_segments()
     P2OUT |= a + c + d + DOT;
 }
 
+void turn_off_led_digits()
+{
+    P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4);
+}
 //******************************************************************************
 //Module Function led_display_num(), Last Revision date 9/22/2022, by Gandhar
 //Taking in a value, lights all of the segments required so that the value can be displayed
 //Requires that the correct pins be declared on the top
 //*******************************************************************************
-void led_display_num(unsigned val)
+void led_display_num(LED_CHARS led_char)
 {
     turn_off_led_segments();
     //For each number, light the needed segments using program lit_let_segment
-    switch (val)
+    switch (led_char)
     {
-    case 0:
+    case NUM_0:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(B_SEGMENT);
@@ -192,13 +229,13 @@ void led_display_num(unsigned val)
         lit_led_segment(F_SEGMENT);
         break;
     }
-    case 1:
+    case NUM_1:
     {
         lit_led_segment(B_SEGMENT);
         lit_led_segment(C_SEGMENT);
         break;
     }
-    case 2:
+    case NUM_2:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(B_SEGMENT);
@@ -207,7 +244,7 @@ void led_display_num(unsigned val)
         lit_led_segment(G_SEGMENT);
         break;
     }
-    case 3:
+    case NUM_3:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(B_SEGMENT);
@@ -216,7 +253,7 @@ void led_display_num(unsigned val)
         lit_led_segment(G_SEGMENT);
         break;
     }
-    case 4:
+    case NUM_4:
     {
         lit_led_segment(B_SEGMENT);
         lit_led_segment(C_SEGMENT);
@@ -224,7 +261,7 @@ void led_display_num(unsigned val)
         lit_led_segment(G_SEGMENT);
         break;
     }
-    case 5:
+    case NUM_5:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(C_SEGMENT);
@@ -233,7 +270,7 @@ void led_display_num(unsigned val)
         lit_led_segment(G_SEGMENT);
         break;
     }
-    case 6:
+    case NUM_6:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(C_SEGMENT);
@@ -243,7 +280,7 @@ void led_display_num(unsigned val)
         lit_led_segment(G_SEGMENT);
         break;
     }
-    case 7:
+    case NUM_7:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(B_SEGMENT);
@@ -251,7 +288,7 @@ void led_display_num(unsigned val)
         break;
     }
 
-    case 8:
+    case NUM_8:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(B_SEGMENT);
@@ -263,12 +300,30 @@ void led_display_num(unsigned val)
         break;
 
     }
-    case 9:
+    case NUM_9:
     {
         lit_led_segment(A_SEGMENT);
         lit_led_segment(B_SEGMENT);
         lit_led_segment(C_SEGMENT);
         lit_led_segment(F_SEGMENT);
+        lit_led_segment(G_SEGMENT);
+        break;
+    }
+    case CHAR_X:
+    {
+        //for displaying char X
+    }
+    case CHAR_Y:
+    {
+        //for displaying char Y
+    }
+    case CHAR_Z:
+    {
+        //for displaying char Z
+    }
+    case CHAR_DASH:
+    {
+        //for displaying sign '-'
         lit_led_segment(G_SEGMENT);
         break;
     }
@@ -362,6 +417,7 @@ void display_decimal_point(char axis, unsigned char on_digits)
 
         lit_led_segment(DP);
     }
+    _delay_cycles(DIGDELAY);
 }
 
 //******************************************************************************
@@ -371,6 +427,7 @@ void display_decimal_point(char axis, unsigned char on_digits)
 //*******************************************************************************
 void display_digits(unsigned int val, char axis)
 {
+    turn_off_led_digits();
 
     unsigned int digit = 0;
     unsigned int number = val;
@@ -399,6 +456,7 @@ void display_digits(unsigned int val, char axis)
         digit = (number / 10) % 10;
         P2OUT = DIGIT_3;
         led_display_num(digit);
+        _delay_cycles(DIGDELAY);
         if (axis == 'z')
         {
             display_decimal_point('z', digits_on);
@@ -411,7 +469,6 @@ void display_digits(unsigned int val, char axis)
         {
             display_decimal_point('x', digits_on);
         }
-        _delay_cycles(DIGDELAY);
 
     }
     else if (val >= 100 && val <= 999)
@@ -430,6 +487,8 @@ void display_digits(unsigned int val, char axis)
         digit = (number / 10) % 10;
         P2OUT = DIGIT_3;
         led_display_num(digit);
+        _delay_cycles(DIGDELAY);
+
         if (axis == 'z')
         {
             display_decimal_point('z', digits_on);
@@ -449,7 +508,6 @@ void display_digits(unsigned int val, char axis)
 //            turn_off_led_segments();
 //            lit_led_segment(DP);
         }
-        _delay_cycles(DIGDELAY);
 
     }
     else if (val >= 1000 && val <= 9999)
@@ -463,26 +521,29 @@ void display_digits(unsigned int val, char axis)
         digit = (number / 10) % 10;
         P2OUT = DIGIT_3;
         led_display_num(digit);
+        _delay_cycles(DIGDELAY);
+
         if (axis == 'z')
         {
             display_decimal_point('z', digits_on);
         }
-        _delay_cycles(DIGDELAY);
         digit = (number / 100) % 10;
         P2OUT = DIGIT_2;
         led_display_num(digit);
+        _delay_cycles(DIGDELAY);
+
         if (axis == 'y')
         {
             display_decimal_point('y', digits_on);
         }
-        _delay_cycles(DIGDELAY);
         digit = (number / 1000) % 10;
         P2OUT = DIGIT_1;
         led_display_num(digit);
+        _delay_cycles(DIGDELAY);
+
         if (axis == 'x')
         {
             display_decimal_point('x', digits_on);
         }
-        _delay_cycles(DIGDELAY);
     }
 }
