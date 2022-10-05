@@ -29,6 +29,8 @@
 // to track which digits of led are on
 unsigned char digits_on = 0x00;
 
+unsigned int adc[3];
+
 typedef enum
 {
     A_SEGMENT = 0,
