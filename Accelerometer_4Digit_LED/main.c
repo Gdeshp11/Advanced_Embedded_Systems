@@ -1,4 +1,5 @@
 #include <msp430.h>
+#include <stdbool.h>
 
 // PORT2 pins for turning on LED digits
 #define DIGIT_1 BIT3  //p2.3
@@ -11,7 +12,7 @@
 #define b BIT5    //p1.5
 #define c BIT6    //p2.6
 #define d BIT7    //p2.7
-#define e BIT0    //p1.0
+#define e BIT7    //p1.7
 #define f BIT6    //p1.6
 #define g BIT4    //p1.4
 
@@ -24,13 +25,13 @@
 
 #define LED_DIGITS 4
 
-#define DIGDELAY 2000 //Number of cycles to delay for displaying each digit in display_digits
-
+#define DIGDELAY 4000 //Number of cycles to delay for displaying each digit in display_digits
 #define BLINKY_DELAY_MS 3000 //Change this as per your needs
-
 
 // to track which digits of led are on
 unsigned char digits_on = 0x00;
+
+unsigned int OFCount;
 
 unsigned int adc[3];
 
@@ -46,17 +47,14 @@ typedef enum
     DP,
 } LED_SEGMENTS;
 
-
 // enum for states
 typedef enum
 {
-    rawX,
-    rawY,
-    rawZ,
-    g_x,
-    g_y,
-    g_z
+    rawX, rawY, rawZ, g_x, g_y, g_z
 } STATES;
+
+//to track current state of machine
+volatile STATES current_state;
 
 //enum for numbers/characters on LED
 typedef enum
@@ -77,12 +75,6 @@ typedef enum
     CHAR_DASH
 } LED_CHARS;
 
-unsigned int OFCount;
-
-char axis = "x";
-
-//p1.7 for ADC
-//p2.4 for LED pin 11 which is for A
 
 //******************************************************************************
 //Module Function configureAdc(), Last Revision date 9/13/2022, by Owen
@@ -94,8 +86,7 @@ void configureAdc();
 //Module Function read_adc(), Last Revision date 9/13/2022, by Owen
 //Reads ADC_INPUT of ADC and Returns the digital Value as an integer
 //*******************************************************************************
-unsigned int read_adc();
-
+unsigned int read_adc(char axis);
 
 //******************************************************************************
 //Module Function read_adc_running_average_filter(), Last Revision date 9/22/2022, by Owen
@@ -103,7 +94,7 @@ unsigned int read_adc();
 //The higher the weight, the more oscillations are damped down
 //*******************************************************************************
 unsigned int read_adc_running_average_filter(unsigned int oldaverage,
-                                             unsigned int weight);
+                                             unsigned int weight,char axis);
 
 //******************************************************************************
 //Module Function led_display_num(), Last Revision date 9/22/2022, by Gandhar
@@ -121,13 +112,22 @@ void lit_led_segment(LED_SEGMENTS segment);
 
 void display_digits(unsigned int val, char axis);
 
+void display_g(unsigned int val, char axis);
+
 void turn_off_led_segments();
 
 void turn_off_led_digits();
 
+void display_state(bool isRawState, unsigned int *adc_val, unsigned int *oldavg,
+                   char axis);
+
 void initTimer(void);
 
-void initButton3(void);
+void initButton(void);
+
+void timer_interupt(void);
+
+void button_interrupt(void);
 
 void main(void)
 {
@@ -143,19 +143,61 @@ void main(void)
     unsigned int oldaverage = 0;
     P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4); //all digits off by default
     configureAdc();
-    unsigned int adc_val = read_adc();
+    unsigned int adc_val = read_adc('x');
     oldaverage = adc_val;
     display_digits(adc_val, 'x'); //The problem with Running Average is that it there can be a "ramp up", displaying one value in beginning helps mitigate this
+
+    //set to rawX as default state
+    current_state = rawX;
+    initTimer();
+    _enable_interrupt();
+
     while (1)
     {
 
         digits_on = 0x00;
-//        unsigned int adc_val = read_adc_median_filtered();
-        unsigned int adc_val = read_adc();
-        adc_val = read_adc_running_average_filter(oldaverage, 10);
-        display_digits(adc_val, 'x');
-        oldaverage = adc_val;
 
+
+        switch (current_state)
+        {
+        case rawX:
+        {
+            display_state(true, &adc_val, &oldaverage, 'x');
+            break;
+        }
+        case rawY:
+        {
+            display_state(true, &adc_val, &oldaverage, 'y');
+            break;
+        }
+        case rawZ:
+        {
+            display_state(true, &adc_val, &oldaverage, 'z');
+            break;
+        }
+        case g_x:
+        {
+            display_state(false, &adc_val, &oldaverage, 'x');
+            break;
+        }
+        case g_y:
+        {
+            display_state(false, &adc_val, &oldaverage, 'y');
+            break;
+        }
+        case g_z:
+        {
+            display_state(false, &adc_val, &oldaverage, 'z');
+            break;
+        }
+        default:
+            break;
+        }
+//        unsigned int adc_val = read_adc_median_filtered();
+//        unsigned int adc_val = read_adc('x');
+//        adc_val = read_adc_running_average_filter(oldaverage, 10);
+//        display_digits(adc_val, 'x');
+//        oldaverage = adc_val;
 
 //        P2OUT = DIGIT_1;
 //        P2OUT &= ~DOT;
@@ -170,6 +212,22 @@ void main(void)
 //        P2OUT &= ~DOT;
 //        _delay_cycles(1000000);
 //        display_digits(9,'x');
+    }
+}
+
+void display_state(bool isRawState, unsigned int *adc_val, unsigned int *oldavg,
+                   char axis)
+{
+    if (isRawState)
+    {
+        *adc_val = read_adc(axis);
+        *adc_val = read_adc_running_average_filter(*oldavg, 10,axis);
+        display_digits(*adc_val, axis);
+        *oldavg = *adc_val;
+    }
+    else
+    {
+        //display g values
     }
 }
 
@@ -189,16 +247,23 @@ void configureAdc()
 //Module Function read_adc(), Last Revision date 9/13/2022, by Owen
 //Reads ADC_INPUT of ADC and Returns the digital Value as an integer
 //*******************************************************************************
-unsigned int read_adc()
+unsigned int read_adc(char axis)
 {
     ADC10CTL0 &= ~ENC;
-    while (ADC10CTL1 & BUSY);
+    while (ADC10CTL1 & BUSY)
+        ;
     ADC10CTL0 |= ENC + ADC10SC;
-    ADC10SA = (unsigned int)adc;
-    return adc[2];
+    ADC10SA = (unsigned int) adc;
+    switch (axis)
+    {
+    case 'x':
+        return adc[0];
+    case 'y':
+        return adc[1];
+    case 'z':
+        return adc[2];
+    }
 }
-
-
 
 //******************************************************************************
 //Module Function read_adc_running_average_filter(), Last Revision date 9/22/2022, by Owen
@@ -206,10 +271,10 @@ unsigned int read_adc()
 //The higher the weight, the more oscillations are damped down
 //*******************************************************************************
 unsigned int read_adc_running_average_filter(unsigned int oldaverage,
-                                             unsigned int weight)
+                                             unsigned int weight,char axis)
 {
     unsigned int average;
-    unsigned int value = read_adc();
+    unsigned int value = read_adc(axis);
     average = (oldaverage * weight + value) / (weight + 1); //Simple running average formula
     return average;
 }
@@ -329,14 +394,31 @@ void led_display_num(LED_CHARS led_char)
     case CHAR_X:
     {
         //for displaying char X
+        lit_led_segment(B_SEGMENT);
+        lit_led_segment(C_SEGMENT);
+        lit_led_segment(E_SEGMENT);
+        lit_led_segment(F_SEGMENT);
+        lit_led_segment(G_SEGMENT);
     }
     case CHAR_Y:
     {
         //for displaying char Y
+        lit_led_segment(B_SEGMENT);
+        lit_led_segment(C_SEGMENT);
+        lit_led_segment(D_SEGMENT);
+        lit_led_segment(F_SEGMENT);
+        lit_led_segment(G_SEGMENT);
+
     }
     case CHAR_Z:
     {
         //for displaying char Z
+        lit_led_segment(A_SEGMENT);
+        lit_led_segment(B_SEGMENT);
+        lit_led_segment(D_SEGMENT);
+        lit_led_segment(E_SEGMENT);
+        lit_led_segment(G_SEGMENT);
+
     }
     case CHAR_DASH:
     {
@@ -514,6 +596,7 @@ void display_digits(unsigned int val, char axis)
         digit = (number / 100) % 10;
         P2OUT = DIGIT_2;
         led_display_num(digit);
+        _delay_cycles(DIGDELAY);
         if (axis == 'y')
         {
             display_decimal_point('y', digits_on);
@@ -521,9 +604,6 @@ void display_digits(unsigned int val, char axis)
         else if (axis == 'x')
         {
             display_decimal_point('x', digits_on);
-//            P2OUT = DIGIT_1;
-//            turn_off_led_segments();
-//            lit_led_segment(DP);
         }
 
     }
@@ -565,7 +645,12 @@ void display_digits(unsigned int val, char axis)
     }
 }
 
-void initTimer_A(void) {
+void display_g(unsigned int val, char axis)
+{
+
+}
+
+void initTimer(void) {
     //Timer Configuration
     BCSCTL1 = CALBC1_1MHZ;
     DCOCTL = CALDCO_1MHZ;
@@ -579,29 +664,30 @@ void initTimer_A(void) {
 }
 
 
-void initButton3(void) {
+void initButton(void) {
     P1IE |=  BIT3;            // P1.3 interrupt enabled
     P1IES |= BIT3;            // P1.3 Hi/lo edge
     P1REN |= BIT3;            // Enable Pull Up on SW2 (P1.3)
     P1IFG &= ~BIT3;           // P1.3 IFG cleared
 }
 
+//Timer ISR
 #pragma vector = TIMER0_A0_VECTOR
 __interrupt void timer_interupt(void) {
     OFCount++;
     if(OFCount >= BLINKY_DELAY_MS)  {
-        if(axis == 'x') {axis = 'y';}
-        else if(axis == 'y') {axis = 'z';}
-        else if(axis == 'z') {axis = 'x';}
-        else if(axis == 'X') {axis = 'Y';}
-        else if(axis == 'Y') {axis = 'Z';}
-        else if(axis == 'Z') {axis = 'X';}
+        if(current_state == rawX) {current_state = rawY;}
+        else if(current_state == rawY) {current_state = rawZ;}
+        else if(current_state == rawZ) {current_state = rawX;}
+        else if(current_state == g_x) {current_state = g_y;}
+        else if(current_state == g_y) {current_state = g_z;}
+        else if(current_state == g_z) {current_state = g_x;}
         OFCount = 0;
     }
 }
 
 #pragma vector=PORT1_VECTOR
 __interrupt void button_interrupt(void) {
-    if(axis == 'x' || 'y' || 'z') {axis = 'X';}
-    else {axis = 'x';}
+    if(current_state == rawX || rawY || rawZ) {current_state = g_x;}
+    else {current_state = rawX;}
 }
