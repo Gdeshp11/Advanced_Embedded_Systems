@@ -26,6 +26,9 @@
 
 #define DIGDELAY 2000 //Number of cycles to delay for displaying each digit in display_digits
 
+#define BLINKY_DELAY_MS 3000 //Change this as per your needs
+
+
 // to track which digits of led are on
 unsigned char digits_on = 0x00;
 
@@ -74,6 +77,10 @@ typedef enum
     CHAR_DASH
 } LED_CHARS;
 
+unsigned int OFCount;
+
+char axis = "x";
+
 //p1.7 for ADC
 //p2.4 for LED pin 11 which is for A
 
@@ -117,6 +124,10 @@ void display_digits(unsigned int val, char axis);
 void turn_off_led_segments();
 
 void turn_off_led_digits();
+
+void initTimer(void);
+
+void initButton3(void);
 
 void main(void)
 {
@@ -552,4 +563,45 @@ void display_digits(unsigned int val, char axis)
             display_decimal_point('x', digits_on);
         }
     }
+}
+
+void initTimer_A(void) {
+    //Timer Configuration
+    BCSCTL1 = CALBC1_1MHZ;
+    DCOCTL = CALDCO_1MHZ;
+    TACCR0 = 0; //Initially, Stop the Timer
+    TACCTL0 |= CCIE; //Enable interrupt for CCR0.
+    TACTL = TASSEL_2 + ID_0 + MC_1; //Select SMCLK, SMCLK/1 , Up Mode
+    OFCount  = 0;
+    TACCR0 = 1000-1; //Start Timer, Compare value for Up Mode to get 1ms delay per loop
+    /*Total count = TACCR0 + 1. Hence we need to subtract 1.
+    1000 ticks @ 1MHz will yield a delay of 1ms.*/
+}
+
+
+void initButton3(void) {
+    P1IE |=  BIT3;            // P1.3 interrupt enabled
+    P1IES |= BIT3;            // P1.3 Hi/lo edge
+    P1REN |= BIT3;            // Enable Pull Up on SW2 (P1.3)
+    P1IFG &= ~BIT3;           // P1.3 IFG cleared
+}
+
+#pragma vector = TIMER0_A0_VECTOR
+__interrupt void timer_interupt(void) {
+    OFCount++;
+    if(OFCount >= BLINKY_DELAY_MS)  {
+        if(axis == 'x') {axis = 'y';}
+        else if(axis == 'y') {axis = 'z';}
+        else if(axis == 'z') {axis = 'x';}
+        else if(axis == 'X') {axis = 'Y';}
+        else if(axis == 'Y') {axis = 'Z';}
+        else if(axis == 'Z') {axis = 'X';}
+        OFCount = 0;
+    }
+}
+
+#pragma vector=PORT1_VECTOR
+__interrupt void button_interrupt(void) {
+    if(axis == 'x' || 'y' || 'z') {axis = 'X';}
+    else {axis = 'x';}
 }
