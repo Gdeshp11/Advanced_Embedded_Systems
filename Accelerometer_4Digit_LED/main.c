@@ -18,7 +18,10 @@
 //Digit dots on LED
 #define DOT BIT5 //p2.5
 
-#define ADC_INPUT BIT7 //p1.7 for ADC
+#define ADC_INPUT_X BIT0 //p1.0 for ADC
+#define ADC_INPUT_Y BIT1 //p1.1 for ADC
+#define ADC_INPUT_Z BIT2 //p1.2 for ADC
+
 #define LED_DIGITS 4
 
 #define DIGDELAY 2000 //Number of cycles to delay for displaying each digit in display_digits
@@ -163,9 +166,10 @@ void main(void)
 //*******************************************************************************
 void configureAdc()
 {
-    ADC10CTL1 = INCH_7 + ADC10DIV_3;         // Channel 7, ADC10CLK/3
-    ADC10CTL0 = SREF_0 + ADC10SHT_3 + ADC10ON + ADC10IE; // Vcc & Vss as reference, Sample and hold for 64 Clock cycles, ADC on, ADC interrupt enable
-    ADC10AE0 |= ADC_INPUT;                         // set p1.7 as adc input pin
+    ADC10CTL1 = INCH_2 + ADC10DIV_0 + CONSEQ_3 + SHS_0;
+    ADC10CTL0 = SREF_0 + ADC10SHT_2 + MSC + ADC10ON; //ADC10IE
+    ADC10AE0 = ADC_INPUT_X + ADC_INPUT_Y + ADC_INPUT_Z;
+    ADC10DTC1 = 3;
 }
 
 //******************************************************************************
@@ -174,11 +178,11 @@ void configureAdc()
 //*******************************************************************************
 unsigned int read_adc()
 {
-    while (ADC10CTL1 & ADC10BUSY)
-        ;
-    ADC10CTL0 |= ENC + ADC10SC;         // Sampling and conversion start
-    unsigned int ADC_value = ADC10MEM; // Assigns the value held in ADC10MEM to the integer called ADC_value
-    return ADC_value;
+    ADC10CTL0 &= ~ENC;
+    while (ADC10CTL1 & BUSY);
+    ADC10CTL0 |= ENC + ADC10SC;
+    ADC10SA = (unsigned int)adc;
+    return adc[2];
 }
 
 
