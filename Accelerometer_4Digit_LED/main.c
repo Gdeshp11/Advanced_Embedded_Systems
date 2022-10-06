@@ -77,20 +77,30 @@ typedef enum
 
 
 //******************************************************************************
-//Module Function configureAdc(), Last Revision date 9/13/2022, by Owen
+//Module Function configureAdc(), Last Revision date 10/6/2022, by Owen
 // function for initializing ADC
+//Intialized using DTC
 //*******************************************************************************
 void configureAdc();
 
 //******************************************************************************
-//Module Function read_adc(), Last Revision date 9/13/2022, by Owen
-//Reads ADC_INPUT of ADC and Returns the digital Value as an integer
+//Module Function read_adc(), Last Revision date 10/6/2022, by Owen
+//Reads ADC_INPUT of ADC and populates an array with the values as unsigned int
+//Relies on Global variable. Based on examples shared in Lab 3 Asignment PDF
 //*******************************************************************************
 unsigned int read_adc(char axis);
 
 //******************************************************************************
+//Module Function read_adc_median_filtered(), Last Revision date 9/22/2022, by Owen
+//Given a number, reads the ADC a certain number of times, and returns the median of them
+//Ultimately not used do to combination of time and oscillation
+//*******************************************************************************
+unsigned int read_adc_median_filtered(volatile unsigned int number, char axis);
+
+//******************************************************************************
 //Module Function read_adc_running_average_filter(), Last Revision date 9/22/2022, by Owen
 //Taking the old average, and the weight, which is set above, calculates the new running average
+//Idea from https://electronics.stackexchange.com/questions/157977/should-i-always-put-a-low-pass-filter-on-an-adc-input
 //The higher the weight, the more oscillations are damped down
 //*******************************************************************************
 unsigned int read_adc_running_average_filter(unsigned int oldaverage,
@@ -99,7 +109,6 @@ unsigned int read_adc_running_average_filter(unsigned int oldaverage,
 //******************************************************************************
 //Module Function led_display_num(), Last Revision date 9/22/2022, by Gandhar
 //Taking in a value, lights all of the segments required so that the value can be displayed
-//Idea from https://electronics.stackexchange.com/questions/157977/should-i-always-put-a-low-pass-filter-on-an-adc-input
 //Requires that the correct pins be declared on the top
 //*******************************************************************************
 void led_display_num(LED_CHARS led_char);
@@ -109,24 +118,69 @@ void led_display_num(LED_CHARS led_char);
 //Given a segment, turn it on.
 //*******************************************************************************
 void lit_led_segment(LED_SEGMENTS segment);
-
+//******************************************************************************
+//Module Function display_digits(), Last Revision date 9/22/2022, by Gandhar
+//Given a number to display, turns on the digits in display that need to be turned on
+//Then displays the digit, delaying an amount of time set in macros to improve persistence of vision
+//*******************************************************************************
 void display_digits(unsigned int val, char axis);
-
-void display_g(unsigned int val, char axis);
-
+//******************************************************************************
+//Module Function display_g(), Last Revision date 1/5/2022, by Owen
+//Given the values that are needed  to display, turns on the digits in display that need to be turned on
+//Then displays the digit, delaying an amount of time set in macros to improve persistence of vision
+//*******************************************************************************
+void display_g(unsigned int grav, char axis);
+//******************************************************************************
+//Module Function turn_off_led_segments(), Last Revision date 9/28/2022, by Gandhar
+//Turns off All LED Segements as set in global variables, thus zeroing out display
+//*******************************************************************************
 void turn_off_led_segments();
-
+//******************************************************************************
+//Module Function turn_off_led_digits(), Last Revision date 9/28/2022, by Gandhar
+//Turns off All LED Digits that are marked in global variables, thus zeroing out display
+//*******************************************************************************
 void turn_off_led_digits();
-
+//******************************************************************************
+//Module Function turn_off_led_digits(), Last Revision date 10/6/2022, by Owen
+//Given the state (whether raw inputs or as g, the ADC Val, the old average, and the axis displayed
+//Displays a filtered version of the value in either raw or G value form
+//*******************************************************************************
 void display_state(bool isRawState, unsigned int *adc_val, unsigned int *oldavg,
                    char axis);
-
+//******************************************************************************
+//Module Function maptoG(), Last Revision date 10/6/2022, by Owen
+//Given a the Raw ADC value, and the axis that the measurement was taken from,
+//Transforms it into the correct G value - found empirically by measuring raw values
+//from each axis on both +1 and -1 G (the only values that can be consistently gotten)
+//Using too many if statements, as well as too many magic numbers
+//*******************************************************************************
+unsigned int maptoG(unsigned int val, char axis);
+//******************************************************************************
+//Module Function turn_off_led_digits(), Last Revision date 10/5/2022, by Owen
+//Helper Function, turns axis in Character, into an enum that the display function can
+//Use, to output as display
+//*******************************************************************************
+LED_CHARS mapaxis(char axis);
+//******************************************************************************
+//Module Function initTimer
+//Initializes the Timer Interrupt - exactly as per Conrad's described example
+//*******************************************************************************
 void initTimer(void);
-
+//******************************************************************************
+//Module Function initButton
+//Initializes the Button Interrupt - exactly as per Conrad's described example
+//*******************************************************************************
 void initButton(void);
-
+//******************************************************************************
+//Timer ISR timer_interupt() by Owen, last edit 10/6/2022
+//After BLINKY_DELAY_MS, timer magic number, iterate through the state machine
+//*******************************************************************************
 void timer_interupt(void);
-
+//******************************************************************************
+//Timer ISR button_interrupt() by Owen, last edit 10/6/2022
+//On button push iterate through the state machine, but switching from Raw values to
+//G-mapped values
+//*******************************************************************************
 void button_interrupt(void);
 
 void main(void)
@@ -150,6 +204,7 @@ void main(void)
     //set to rawX as default state
     current_state = rawX;
     initTimer();
+    initButton();
     _enable_interrupt();
 
     while (1)
@@ -193,28 +248,14 @@ void main(void)
         default:
             break;
         }
-//        unsigned int adc_val = read_adc_median_filtered();
-//        unsigned int adc_val = read_adc('x');
-//        adc_val = read_adc_running_average_filter(oldaverage, 10);
-//        display_digits(adc_val, 'x');
-//        oldaverage = adc_val;
 
-//        P2OUT = DIGIT_1;
-//        P2OUT &= ~DOT;
-//        _delay_cycles(1000000);
-//        P2OUT = DIGIT_2;
-//        P2OUT &= ~DOT;
-//        _delay_cycles(1000000);
-//        P2OUT = DIGIT_3;
-//        P2OUT &= ~DOT;
-//        _delay_cycles(1000000);
-//        P2OUT = DIGIT_4;
-//        P2OUT &= ~DOT;
-//        _delay_cycles(1000000);
-//        display_digits(9,'x');
     }
 }
-
+//******************************************************************************
+//Module Function turn_off_led_digits(), Last Revision date 10/6/2022, by Owen
+//Given the state (whether raw inputs or as g, the ADC Val, the old average, and the axis displayed
+//Displays a filtered version of the value in either raw or G value form
+//*******************************************************************************
 void display_state(bool isRawState, unsigned int *adc_val, unsigned int *oldavg,
                    char axis)
 {
@@ -227,41 +268,49 @@ void display_state(bool isRawState, unsigned int *adc_val, unsigned int *oldavg,
     }
     else
     {
-        //display g values
+        *adc_val = read_adc(axis);
+        *adc_val = read_adc_running_average_filter(*oldavg, 10,axis);
+        display_g(*adc_val, axis);
+        *oldavg = *adc_val;
     }
 }
 
 //******************************************************************************
-//Module Function configureAdc(), Last Revision date 9/13/2022, by Owen
+//Module Function configureAdc(), Last Revision date 10/6/2022, by Owen
 // function for initializing ADC
+//Intialized using DTC
 //*******************************************************************************
 void configureAdc()
 {
-    ADC10CTL1 = INCH_2 + ADC10DIV_0 + CONSEQ_3 + SHS_0;
-    ADC10CTL0 = SREF_0 + ADC10SHT_2 + MSC + ADC10ON; //ADC10IE
-    ADC10AE0 = ADC_INPUT_X + ADC_INPUT_Y + ADC_INPUT_Z;
+    ADC10CTL0 &= ~ENC;                        // Disable ADC
+
+    ADC10CTL0 = SREF_0 + ADC10SHT_3 + MSC + ADC10ON; //ADC10IE
+    ADC10CTL1 = INCH_2 + CONSEQ_3; // Channel 3, Three Readings,
     ADC10DTC1 = 3;
+    ADC10AE0 |= ADC_INPUT_X + ADC_INPUT_Y + ADC_INPUT_Z;
 }
 
 //******************************************************************************
-//Module Function read_adc(), Last Revision date 9/13/2022, by Owen
-//Reads ADC_INPUT of ADC and Returns the digital Value as an integer
+//Module Function read_adc(), Last Revision date 10/6/2022, by Owen
+//Reads ADC_INPUT of ADC and populates an array with the values as unsigned int
+//Relies on Global variable
 //*******************************************************************************
 unsigned int read_adc(char axis)
 {
     ADC10CTL0 &= ~ENC;
-    while (ADC10CTL1 & BUSY)
+    while (ADC10CTL1 & ADC10BUSY)
         ;
     ADC10CTL0 |= ENC + ADC10SC;
     ADC10SA = (unsigned int) adc;
+
     switch (axis)
     {
     case 'x':
-        return adc[0];
+        return adc[2];
     case 'y':
         return adc[1];
     case 'z':
-        return adc[2];
+        return adc[0];
     }
 }
 
@@ -279,13 +328,48 @@ unsigned int read_adc_running_average_filter(unsigned int oldaverage,
     return average;
 }
 
+//******************************************************************************
+//Module Function read_adc_median_filtered(), Last Revision date 9/22/2022, by Owen
+//Given a number, reads the ADC a certain number of times, and returns the median of them
+//Ultimately not used do to combination of time and oscillation
+//*******************************************************************************
+
+unsigned int read_adc_median_filtered(volatile unsigned int number, char axis)
+{
+    unsigned int arr[number];
+    volatile unsigned int i,j,tmp;
+
+    for(i = number; i > 0; i--) { //reads ADC certain number of times
+        arr[i] = read_adc(axis);
+    }
+
+    for(i=0;i<number;i++) //Algorithm taken from robotics class last semester
+    {                     //Sorts the array by size
+        for(j=0; j < number; j++)
+        {
+            if(arr[j] > arr[i]) {
+                tmp = arr[i];
+                arr[i] = arr[j];
+                arr[j] = tmp;
+            }
+        }
+    }
+    return arr[number / 2]; //returns the middle value in the array, which is the Median
+}
+//******************************************************************************
+//Module Function turn_off_led_segments(), Last Revision date 9/28/2022, by Gandhar
+//Turns off All LED Segements as set in global variables, thus zeroing out display
+//*******************************************************************************
 void turn_off_led_segments()
 {
     // turn off all segments first
     P1OUT |= b + e + f + g;
     P2OUT |= a + c + d + DOT;
 }
-
+//******************************************************************************
+//Module Function turn_off_led_digits(), Last Revision date 9/28/2022, by Gandhar
+//Turns off All LED Digits that are marked in global variables, thus zeroing out display
+//*******************************************************************************
 void turn_off_led_digits()
 {
     P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4);
@@ -399,6 +483,7 @@ void led_display_num(LED_CHARS led_char)
         lit_led_segment(E_SEGMENT);
         lit_led_segment(F_SEGMENT);
         lit_led_segment(G_SEGMENT);
+        break;
     }
     case CHAR_Y:
     {
@@ -408,7 +493,7 @@ void led_display_num(LED_CHARS led_char)
         lit_led_segment(D_SEGMENT);
         lit_led_segment(F_SEGMENT);
         lit_led_segment(G_SEGMENT);
-
+        break;
     }
     case CHAR_Z:
     {
@@ -418,7 +503,7 @@ void led_display_num(LED_CHARS led_char)
         lit_led_segment(D_SEGMENT);
         lit_led_segment(E_SEGMENT);
         lit_led_segment(G_SEGMENT);
-
+        break;
     }
     case CHAR_DASH:
     {
@@ -644,12 +729,114 @@ void display_digits(unsigned int val, char axis)
         }
     }
 }
-
-void display_g(unsigned int val, char axis)
+//******************************************************************************
+//Module Function maptoG(), Last Revision date 10/6/2022, by Owen
+//Given a the Raw ADC value, and the axis that the measurement was taken from,
+//Transforms it into the correct G value - found empirically by measuring raw values
+//from each axis on both +1 and -1 G (the only values that can be consistently gotten)
+//Using too many if statements, as well as too many magic numbers
+//*******************************************************************************
+unsigned int maptoG(unsigned int val, char axis)
 {
+    unsigned int gmap;
+    volatile unsigned int gval = 0;
 
+    if(axis == 'x' && val >= 482) {
+        gmap = val - 482;
+    }
+    else if(axis == 'x' && val < 482) {
+            gmap = 482 - val;
+        }
+    else if(axis == 'y' && val >= 467) {
+            gmap = val - 467;
+        }
+    else if(axis == 'y' && val < 467) {
+            gmap = 467 - val;
+        }
+    else if(axis == 'z' && val >= 487) {
+            gmap = val - 487;
+        }
+    else if(axis == 'z' && val < 487) {
+            gmap = 487 - val;
+        }
+    if(axis == 'y') {
+        for(gval = 0; gval < 102; gval++) {
+            if(gval * 10 > gmap){
+                break;
+            }
+        }
+    }
+    else {
+        for(gval = 0; gval < 102; gval++) {
+                    if(gval * 9 > gmap){
+                        break;
+                    }
+                }
+    }
+
+    return gval;
+}
+//******************************************************************************
+//Module Function turn_off_led_digits(), Last Revision date 10/5/2022, by Owen
+//Helper Function, turns axis in Character, into an enum that the display function can
+//Use, to output as display
+//*******************************************************************************
+LED_CHARS mapaxis(char axis) {
+    switch (axis)
+    {
+    case 'x': {
+        return CHAR_X;
+    }
+    case 'y': {
+        return CHAR_Y;
+    }
+    case 'z': {
+        return CHAR_Z;
+    }
+    default: {
+        return CHAR_X;
+    }
+    }
 }
 
+//******************************************************************************
+//Module Function display_g(), Last Revision date 1/5/2022, by Owen
+//Given the values that are needed  to display, turns on the digits in display that need to be turned on
+//Then displays the digit, delaying an amount of time set in macros to improve persistence of vision
+//*******************************************************************************
+void display_g(unsigned int grav, char axis)
+{
+    unsigned int digit = maptoG(grav, axis);
+    LED_CHARS charAxis = mapaxis(axis);
+    turn_off_led_digits();
+    //Do the same process as above, but for all 4 digits.
+    digits_on = (1 << 0) + (1 << 1) + (1 << 2) + (1 << 3);
+    P2OUT = DIGIT_1;
+    led_display_num(charAxis);
+    _delay_cycles(DIGDELAY);
+    P2OUT = DIGIT_2;
+      if(digit <= 30) {
+      led_display_num(CHAR_DASH);
+      _delay_cycles(DIGDELAY);
+      }
+      else {
+          turn_off_led_segments();
+      }
+
+    unsigned int tens = (digit / 10) % 10;
+    P2OUT = DIGIT_3;
+    led_display_num(tens);
+    _delay_cycles(DIGDELAY);
+    digit = (digit) % 10;
+    display_decimal_point('y', digits_on);
+    P2OUT = DIGIT_4;
+    led_display_num(digit);
+    _delay_cycles(DIGDELAY);
+}
+//******************************************************************************
+//Module Function initTimer
+//Initializes the Timer Interrupt - exactly as per Conrad's described example
+//*******************************************************************************
 void initTimer(void) {
     //Timer Configuration
     BCSCTL1 = CALBC1_1MHZ;
@@ -663,7 +850,10 @@ void initTimer(void) {
     1000 ticks @ 1MHz will yield a delay of 1ms.*/
 }
 
-
+//******************************************************************************
+//Module Function initButton
+//Initializes the Button Interrupt - exactly as per Conrad's described example
+//*******************************************************************************
 void initButton(void) {
     P1IE |=  BIT3;            // P1.3 interrupt enabled
     P1IES |= BIT3;            // P1.3 Hi/lo edge
@@ -672,6 +862,10 @@ void initButton(void) {
 }
 
 //Timer ISR
+//******************************************************************************
+//Timer ISR timer_interupt() by Owen, last edit 10/6/2022
+//After BLINKY_DELAY_MS, timer magic number, iterate through the state machine
+//*******************************************************************************
 #pragma vector = TIMER0_A0_VECTOR
 __interrupt void timer_interupt(void) {
     OFCount++;
@@ -685,9 +879,14 @@ __interrupt void timer_interupt(void) {
         OFCount = 0;
     }
 }
-
+//******************************************************************************
+//Timer ISR button_interrupt() by Owen, last edit 10/6/2022
+//On button push iterate through the state machine, but switching from Raw values to
+//G-mapped values
+//*******************************************************************************
 #pragma vector=PORT1_VECTOR
 __interrupt void button_interrupt(void) {
-    if(current_state == rawX || rawY || rawZ) {current_state = g_x;}
+    if( (current_state == rawX) || (current_state == rawY) || (current_state == rawZ)) {current_state = g_x;}
     else {current_state = rawX;}
+    P1IFG &= ~BIT3;
 }
