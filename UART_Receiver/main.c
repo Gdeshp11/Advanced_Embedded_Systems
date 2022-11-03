@@ -1,12 +1,11 @@
 /*
+ *  LAB-7: Receive POT ADC Value from another G2553 on serial and display on quad digit LED
  *  uart_receiver.c
  *  Created on: Oct 31, 2022
  *  Author: Gandhar Deshpande
  */
 
 #include <msp430.h>
-#include <string.h>
-#include <stdbool.h>
 #include <stdio.h>
 
 // PORT2 pins for turning on LED digits
@@ -19,22 +18,21 @@
 #define a BIT4    //p2.4
 #define b BIT5    //p1.5
 #define c BIT0    //p1.0
-#define d BIT1    //p1.1
+#define d BIT3    //p1.3
 #define e BIT7    //p1.7
 #define f BIT6    //p1.6
 #define g BIT4    //p1.4
 
-#define DIGDELAY 1000 // Number of cycles to delay for displaying each digit in display_digits
+#define DIGDELAY 2000 // Number of cycles to delay for displaying each digit in display_digits
 
-#define RXLED BIT6
-#define RX_DATA_LENGTH 5
-#define START_BYTE 0xAA
+//#define RXLED BIT6
+#define RX_DATA_LENGTH 6
+#define START_BYTE 0xFF
 #define END_BYTE 0xBB
 
-bool isDataReady = false;
-volatile unsigned char rxDataBytesCounter = 0;
+volatile unsigned char rxDataBytesCounter = 0, startByteCounter = 0;
 volatile unsigned int adcValue;
-volatile char testBuf[28];
+volatile char testBuf[25];
 
 typedef enum
 {
@@ -47,24 +45,25 @@ typedef enum
     G_SEGMENT,
 } LED_SEGMENTS;
 
-#pragma pack(1)
+//#pragma pack(1)
+//
+//typedef union
+//{
+//    unsigned char rxBuf[RX_DATA_LENGTH];
+//
+//    struct
+//    {
+//        unsigned char startByte1;
+//        unsigned char startByte2;
+//        unsigned char dataLength;
+//        unsigned char dataByte1;
+//        unsigned char dataByte2;
+//        unsigned char endByte;
+//    };
+//
+//} rxData_t;
 
-typedef union
-{
-    unsigned char rxBuf[RX_DATA_LENGTH];
-
-    struct
-    {
-        unsigned char startByte;
-        unsigned char dataLength;
-        unsigned char dataByte1;
-        unsigned char dataByte2;
-        unsigned char endByte;
-    };
-
-} rxData_t;
-
-rxData_t rxData;
+//rxData_t rxData;
 
 unsigned char rxBuf[RX_DATA_LENGTH];
 
@@ -97,7 +96,7 @@ void main(void)
     P2SEL &= ~BIT6;  //enable p2.6 as gpio
     P2SEL &= ~BIT7;  //enable p2.7 as gpio
 
-    P1DIR |= RXLED;
+//    P1DIR |= RXLED;
 
     P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4); // all digits off by default
     uart_init();
@@ -105,13 +104,20 @@ void main(void)
     __enable_interrupt();
     while (1)
     {
-        if (rxDataBytesCounter == 28)
-        {
-            __disable_interrupt();
-            ser_output("\r\n--->DEBUG::rxDataBytesCounter == 28");
-            ser_output(testBuf);
-            __enable_interrupt();
-        }
+//        adcValue = 0;
+          display_digits((adcValue/5)*5);
+//        char buf[25] = {0};
+//        if (rxDataBytesCounter == 25)
+//        {
+//            __disable_interrupt();
+////            ser_output("\r\n--->DEBUG::rxDataBytesCounter == 28");
+//            sscanf(testBuf,"\r\n#adc_val:%d",&adcValue);
+////            display_digits((adcValue/4)*4);
+//
+////            sprintf(buf,"\r\nadc_val obtained:%d",adcValue);
+////            ser_output(buf);
+//            __enable_interrupt();
+//        }
     }
 }
 
@@ -143,7 +149,7 @@ __interrupt void serial_rx_interrupt(void)
     if (IFG2 & UCA0RXIFG)
     {
         __disable_interrupt();
-        P1OUT |= RXLED;
+//        P1OUT |= RXLED;
 //        ser_output("\n--->DEBUG::in interrupt..");
 
         if (UCA0RXBUF == '\r' && rxDataBytesCounter == 0)
@@ -152,50 +158,51 @@ __interrupt void serial_rx_interrupt(void)
 
             testBuf[rxDataBytesCounter++] = UCA0RXBUF;
         }
-        else if (rxDataBytesCounter >0 && rxDataBytesCounter < 28)
+        else if (rxDataBytesCounter >0 && rxDataBytesCounter < 25)
         {
 //            ser_output("\n--->DEBUG::in second if..");
             testBuf[rxDataBytesCounter++] = UCA0RXBUF;
         }
-        else if(rxDataBytesCounter >=28)
+        else if(rxDataBytesCounter >=25)
         {
 //            ser_output("\n--->DEBUG::in third if..");
+            sscanf(testBuf,"\r\n#adc_val:%d",&adcValue);
+//            display_digits((adcValue/3)*3);
             rxDataBytesCounter = 0;
         }
 
-//    sprintf(testBuf,"%c",UCA0RXBUF);
-//    ser_output(testBuf);
 
-//    ser_output("FROM INTERRUPT");
-
-//    if (UCA0RXBUF == START_BYTE) // 'Start byte' received?
+//    if (UCA0RXBUF == START_BYTE && (startByteCounter == 0 | startByteCounter == 1)) // 'Start bytes' received?
 //    {
-//        isDataReady = true;
-//        rxData.startByte = UCA0RXBUF;
-//        rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
+//        rxData.rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
+//        startByteCounter++;
 //    }
 //
-//    if (isDataReady && rxDataBytesCounter <= RX_DATA_LENGTH)
+//    else if ((rxDataBytesCounter >0) && (rxDataBytesCounter < RX_DATA_LENGTH) && (startByteCounter == 2))
 //    {
-//        if (UCA0RXBUF == END_BYTE && rxDataBytesCounter == RX_DATA_LENGTH)
-//        {
-//            rxBuf[rxDataBytesCounter] = UCA0RXBUF;
+//        rxData.rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
+//    }
+//    else if(rxDataBytesCounter == RX_DATA_LENGTH )
+//    {
+//        // display ADC VALUE ON LED
+//        adcValue = (unsigned int)(rxData.dataByte1 << 8 | rxData.dataByte2);
+//        sprintf(testBuf, "\r\n\nADC VALUE:%d", adcValue);
+//        ser_output(testBuf);
+////        display_digits(adcValue);
+//        sprintf(testBuf, "\r\n----DEBUG::rxData.dataByte1:%x \t rxData.dataByte2:%x", rxData.dataByte1,rxData.dataByte2);
+//        ser_output(testBuf);
+////        printf(testBuf, "\r\n----DEBBUG::rxData.dataByte2:%x", rxData.dataByte2);
+////        ser_output(testBuf);
 //
-//            // display ADC VALUE ON LED
-//            adcValue = rxBuf[2] << 8 | rxBuf[3];
-//            display_digits(adcValue);
-//            sprintf(testBuf, "\r\n\nADC VALUE:%d", adcValue);
-//            ser_output(testBuf);
-//            isDataReady = false;
-//            rxDataBytesCounter = 0;
-//        }
-//        else
-//        {
-//            rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
-//        }
+////        sprintf(testBuf,rxData.rxBuf);
+////        ser_output(testBuf);
+//        rxDataBytesCounter = 0;
+//        startByteCounter = 0;
+//    }
+
 //    }
         IFG2 &= ~UCA0RXIFG;
-        P1OUT &= ~RXLED;
+//        P1OUT &= ~RXLED;
         __enable_interrupt();
     }
 }
@@ -422,7 +429,7 @@ void display_digits(unsigned int val)
         digit = (number / 100) % 10;
         P2OUT = DIGIT_2;
         led_display_num(digit);
-        __delay_cycles(10);
+        __delay_cycles(DIGDELAY);
         digit = (number / 1000) % 10;
         P2OUT = DIGIT_1;
         led_display_num(digit);
