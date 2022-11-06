@@ -30,7 +30,7 @@
 #define START_BYTE 0xFF
 #define END_BYTE 0xBB
 
-volatile unsigned char rxDataBytesCounter = 0, startByteCounter = 0;
+volatile unsigned char rxDataBytesCounter = 0;
 volatile unsigned int adcValue;
 volatile char testBuf[25];
 
@@ -67,7 +67,7 @@ typedef enum
 
 unsigned char rxBuf[RX_DATA_LENGTH];
 
-void led_display_num(unsigned val);
+void led_display_num(const unsigned val);
 
 //******************************************************************************
 // Module Function lit_let_segment(), Last Revision date 9/22/2022, by Gandhar
@@ -75,7 +75,7 @@ void led_display_num(unsigned val);
 //*******************************************************************************
 void lit_led_segment(LED_SEGMENTS segment);
 
-void display_digits(unsigned int val);
+void display_digits(const unsigned int val);
 
 void uart_init();
 
@@ -105,8 +105,10 @@ void main(void)
     while (1)
     {
 //        adcValue = 0;
-          display_digits((adcValue/5)*5);
-//        char buf[25] = {0};
+
+          display_digits(adcValue);
+
+        char buf[25] = {0};
 //        if (rxDataBytesCounter == 25)
 //        {
 //            __disable_interrupt();
@@ -114,8 +116,8 @@ void main(void)
 //            sscanf(testBuf,"\r\n#adc_val:%d",&adcValue);
 ////            display_digits((adcValue/4)*4);
 //
-////            sprintf(buf,"\r\nadc_val obtained:%d",adcValue);
-////            ser_output(buf);
+//            sprintf(buf,"\r\nadc_val obtained:%d",adcValue);
+//            ser_output(buf);
 //            __enable_interrupt();
 //        }
     }
@@ -212,7 +214,7 @@ __interrupt void serial_rx_interrupt(void)
 // Taking in a value, lights all of the segments required so that the value can be displayed
 // Requires that the correct pins be declared on the top
 //*******************************************************************************
-void led_display_num(unsigned val)
+void led_display_num(const unsigned val)
 {
     // turn off all segments first
     P1OUT |= b + c + d + e + f + g;
@@ -368,7 +370,7 @@ void lit_led_segment(LED_SEGMENTS segment)
 // Given a number to display, turns on the digits in display that need to be turned on
 // Then displays the digit, delaying an amount of time set in macros to improve persistence of vision
 //*******************************************************************************
-void display_digits(unsigned int val)
+void display_digits(const unsigned int val)
 {
 
     unsigned int digit = 0;
