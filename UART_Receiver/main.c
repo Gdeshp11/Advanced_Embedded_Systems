@@ -108,7 +108,7 @@ void main(void)
 
           display_digits(adcValue);
 
-        char buf[25] = {0};
+//         char buf[25] = {0};
 //        if (rxDataBytesCounter == 25)
 //        {
 //            __disable_interrupt();
