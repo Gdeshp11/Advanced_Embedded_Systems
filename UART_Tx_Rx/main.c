@@ -1,6 +1,6 @@
 /*
- *  LAB-7: Transmit POT ADC Value to another G2553 on serial
- *  uart_transmitter.c
+ *  LAB-7: Transmit POT ADC Value from one G2553 to another G2553 on serial and display the value on quad digit LED
+ *  main.c
  *  Created on: Oct 31, 2022
  *  Author: Gandhar Deshpande, Owen Heckmann
  */
@@ -30,14 +30,12 @@
 
 #define DIGDELAY 2000 // Number of cycles to delay for displaying each digit in display_digits
 
-//#define RXLED BIT6
 #define RX_DATA_LENGTH 6
-#define START_BYTE 0xFF
-#define END_BYTE 0xBB
 
 volatile unsigned char rxDataBytesCounter = 0, startByteCounter = 0;
-volatile unsigned int adcValue = 2000;
+volatile unsigned int adcValue = 0;
 volatile char testBuf[25];
+unsigned char rxBuf[RX_DATA_LENGTH];
 
 typedef enum
 {
@@ -50,37 +48,71 @@ typedef enum
     G_SEGMENT,
 } LED_SEGMENTS;
 
-//p1.7 for ADC
-//p2.4 for LED pin 11 which is for A
 
+//******************************************************************************
+//Module Function configureAdc(), Last Revision date 9/13/2022, by Owen
+// function for initializing ADC
+//*******************************************************************************
 void configureAdc();
 
+//******************************************************************************
+//Module Function read_adc(), Last Revision date 9/13/2022, by Owen
+//Reads ADC_INPUT of ADC and Returns the digital Value as an integer
+//*******************************************************************************
 unsigned int read_adc();
 
-unsigned char rxBuf[RX_DATA_LENGTH];
-
+//******************************************************************************
+// Module Function led_display_num(), Last Revision date 9/22/2022, by Gandhar
+// Taking in a value, lights all of the segments required so that the value can be displayed
+// Requires that the correct pins be declared on the top
+//*******************************************************************************
 void led_display_num(const unsigned val);
 
+//******************************************************************************
+// Module Function lit_let_segment(), Last Revision date 9/22/2022, by Gandhar
+// Given a segment, turn it on.
+//*******************************************************************************
 void lit_led_segment(LED_SEGMENTS segment);
 
+//******************************************************************************
+// Module Function display_digits(), Last Revision date 9/22/2022, by Gandhar
+// Given a number to display, turns on the digits in display that need to be turned on
+// Then displays the digit, delaying an amount of time set in macros to improve persistence of vision
+//*******************************************************************************
 void display_digits(unsigned int val);
 
+//******************************************************************************
+//Module Function configureAdc(), Last Revision date 11/8/2022, by Gandhar
+// function for initializing UART for pins 1.1 and 1.2
+//*******************************************************************************
 void uart_init();
 
+//******************************************************************************
+//Module Function ser_output(char *str)
+//Last Revision date 11/8/2022, by Gandhar
+// function for sending string of information to serial console
+//*******************************************************************************
 void ser_output(char *str);
 
+//******************************************************************************
+//Module Function send_data(unsigned int adc_val),
+//Last Revision date 11/8/2022, by Gandhar
+// function for sending integer across UART
+//*******************************************************************************
 void send_data(unsigned int adc_val);
 
+//******************************************************************************
+//interrupt serial_rx_interrupt, Last Revision date 11/8/2022, by Gandhar
+//When a chip configured to listen to UART recieves data, extracts the
+//Integer from the data stream, and writes it to the global variable adcValue
+//*******************************************************************************
 void serial_rx_interrupt();
 
 void main(void)
 {
     WDTCTL = WDTPW | WDTHOLD;       // stop watchdog timer
 
-
-
     P2DIR &= ~INPUTPIN;               // Pin is an input
-//    P2REN |= INPUTPIN;
 
     BCSCTL1 = CALBC1_1MHZ;
     DCOCTL = CALDCO_1MHZ;
@@ -95,7 +127,6 @@ void main(void)
 
         while (1)
         {
-
             unsigned int new_adc_val = read_adc();
 
             if ((new_adc_val - old_adc_val > 1)
@@ -114,29 +145,20 @@ void main(void)
     {
         P2DIR |= DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4 + a;
         P1DIR |= b + c + d + e + f + g;
-
         P2SEL &= ~BIT6;  //enable p2.6 as gpio
         P2SEL &= ~BIT7;  //enable p2.7 as gpio
-
-        //    P1DIR |= RXLED;
-
         P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4); // all digits off by default
         UC0IE |= UCA0RXIE; // Enable USCI_A0 RX interrupt
+
         __enable_interrupt();
 
         while (1)
         {
-//            ser_output("\r\n in second if...");
             display_digits(adcValue);
 
         }
     }
 }
-
-//******************************************************************************
-//Module Function configureAdc(), Last Revision date 11/8/2022, by Gandhar
-// function for initializing UART for pins 1.1 and 1.2
-//*******************************************************************************
 
 void uart_init()
 {
@@ -149,22 +171,14 @@ void uart_init()
     UCA0CTL1 &= ~UCSWRST;
 
 }
-//******************************************************************************
-//Module Function send_data(unsigned int adc_val),
-//Last Revision date 11/8/2022, by Gandhar
-// function for sending integer across UART
-//*******************************************************************************
+
 void send_data(unsigned int adc_val)
 {
     char txBuf_arr[20];
     sprintf(txBuf_arr, "\r\n#adc_val:%d", (adc_val / 2) * 2);
     ser_output(txBuf_arr);
 }
-//******************************************************************************
-//Module Function ser_output(char *str)
-//Last Revision date 11/8/2022, by Gandhar
-// function for sending string of information to serial console
-//*******************************************************************************
+
 void ser_output(char *str)
 {
     while (*str != 0)
@@ -175,10 +189,6 @@ void ser_output(char *str)
     }
 }
 
-//******************************************************************************
-//Module Function configureAdc(), Last Revision date 9/13/2022, by Owen
-// function for initializing ADC
-//*******************************************************************************
 void configureAdc()
 {
     ADC10CTL1 = INCH_3 + ADC10DIV_3;         // Channel 7, ADC10CLK/3
@@ -186,10 +196,6 @@ void configureAdc()
     ADC10AE0 |= ADC_INPUT;                         // set p1.7 as adc input pin
 }
 
-//******************************************************************************
-//Module Function read_adc(), Last Revision date 9/13/2022, by Owen
-//Reads ADC_INPUT of ADC and Returns the digital Value as an integer
-//*******************************************************************************
 unsigned int read_adc()
 {
     while (ADC10CTL1 & ADC10BUSY);
@@ -197,12 +203,6 @@ unsigned int read_adc()
     unsigned int ADC_value = ADC10MEM; // Assigns the value held in ADC10MEM to the integer called ADC_value
     return ADC_value;
 }
-
-//******************************************************************************
-//interrupt serial_rx_interrupt, Last Revision date 11/8/2022, by Gandhar
-//When a chip configured to listen to UART recieves data, extracts the
-//Integer from the data stream, and writes it to the global variable adcValue
-//*******************************************************************************
 
 #pragma vector = USCIAB0RX_VECTOR
 __interrupt void serial_rx_interrupt(void)
@@ -238,11 +238,7 @@ __interrupt void serial_rx_interrupt(void)
     }
 }
 
-//******************************************************************************
-// Module Function led_display_num(), Last Revision date 9/22/2022, by Gandhar
-// Taking in a value, lights all of the segments required so that the value can be displayed
-// Requires that the correct pins be declared on the top
-//*******************************************************************************
+
 void led_display_num(const unsigned val)
 {
     // turn off all segments first
@@ -346,10 +342,7 @@ void led_display_num(const unsigned val)
     }
 }
 
-//******************************************************************************
-// Module Function lit_let_segment(), Last Revision date 9/22/2022, by Gandhar
-// Given a segment, turn it on.
-//*******************************************************************************
+
 void lit_led_segment(LED_SEGMENTS segment)
 {
     switch (segment)
@@ -394,11 +387,6 @@ void lit_led_segment(LED_SEGMENTS segment)
     }
 }
 
-//******************************************************************************
-// Module Function display_digits(), Last Revision date 9/22/2022, by Gandhar
-// Given a number to display, turns on the digits in display that need to be turned on
-// Then displays the digit, delaying an amount of time set in macros to improve persistence of vision
-//*******************************************************************************
 void display_digits(unsigned int val)
 {
     //As per Discussion with Joey 11/7/2022
