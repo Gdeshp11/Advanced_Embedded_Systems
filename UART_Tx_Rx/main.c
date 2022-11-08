@@ -9,9 +9,9 @@
 #include <string.h>
 #include <stdio.h>
 
-#define ADC_INPUT BIT3 //p1.7 for ADC
+#define ADC_INPUT BIT3 //p1.3 for ADC
 
-#define INPUTPIN BIT5 //p1.1 for Test input
+#define INPUTPIN BIT5 //p2.5 for Test input
 
 // PORT2 pins for turning on LED digits
 #define DIGIT_1 BIT3  //p2.3
@@ -50,22 +50,6 @@ typedef enum
     G_SEGMENT,
 } LED_SEGMENTS;
 
-//#pragma pack(1)
-
-//typedef union
-//{
-//    unsigned char txBuf[5];
-//
-//    struct {
-//    unsigned char startByte;
-//    unsigned char dataLength;
-//    unsigned char dataByte1;
-//    unsigned char dataByte2;
-//    unsigned char endByte;
-//    };
-//
-//} txData;
-
 //p1.7 for ADC
 //p2.4 for LED pin 11 which is for A
 
@@ -103,7 +87,7 @@ void main(void)
 
     uart_init();
 
-    if ((P2IN & INPUTPIN))
+    if ((P2IN & INPUTPIN)) //On if not connected to ground, for Transmitter Chip
     {
         configureAdc();
 
@@ -111,11 +95,9 @@ void main(void)
 
         while (1)
         {
-//            char str[25] = {0};
 
             unsigned int new_adc_val = read_adc();
-//            sprintf(str,"\r\n\nADC value:%d",new_adc_val);
-//            ser_output(str);
+
             if ((new_adc_val - old_adc_val > 1)
                     || (old_adc_val - new_adc_val > 1))
             {
@@ -128,7 +110,7 @@ void main(void)
 
     }
 
-    else if (!(P2IN & INPUTPIN))
+    else if (!(P2IN & INPUTPIN)) //Off if connected to ground, for Receiver Chip
     {
         P2DIR |= DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4 + a;
         P1DIR |= b + c + d + e + f + g;
@@ -151,6 +133,11 @@ void main(void)
     }
 }
 
+//******************************************************************************
+//Module Function configureAdc(), Last Revision date 11/8/2022, by Gandhar
+// function for initializing UART for pins 1.1 and 1.2
+//*******************************************************************************
+
 void uart_init()
 {
     P1SEL = BIT1 | BIT2;
@@ -162,28 +149,22 @@ void uart_init()
     UCA0CTL1 &= ~UCSWRST;
 
 }
-
+//******************************************************************************
+//Module Function send_data(unsigned int adc_val),
+//Last Revision date 11/8/2022, by Gandhar
+// function for sending integer across UART
+//*******************************************************************************
 void send_data(unsigned int adc_val)
 {
-    // txData buf = {
-    //     .startByte=0xAA,
-    //     .dataLength=0x0A,
-    //     .dataByte1=((adc_val >> 8) & 0xFF),
-    //     .dataByte2=(adc_val & 0xFF),
-    //     .endByte=0xBB
-    // };
-
-//    unsigned char txBuf_arr[] = {0xFF, 0xFF, 0x0A, ((adc_val >> 8) & 0xFF), (adc_val & 0xFF), 0xBB};
     char txBuf_arr[20];
     sprintf(txBuf_arr, "\r\n#adc_val:%d", (adc_val / 2) * 2);
-//    ser_output("\r\n\nHello from Transmitter!!!");
-//     char char_buf[25];
-//     unsigned int adc_val_obtained = txBuf_arr[2] << 8 | txBuf_arr[3];
-//     snprintf(char_buf,sizeof(char_buf),"\r\n\nADC val obtained:%d\n\n",adc_val_obtained);
-//     ser_output(char_buf);
     ser_output(txBuf_arr);
 }
-
+//******************************************************************************
+//Module Function ser_output(char *str)
+//Last Revision date 11/8/2022, by Gandhar
+// function for sending string of information to serial console
+//*******************************************************************************
 void ser_output(char *str)
 {
     while (*str != 0)
@@ -217,65 +198,42 @@ unsigned int read_adc()
     return ADC_value;
 }
 
+//******************************************************************************
+//interrupt serial_rx_interrupt, Last Revision date 11/8/2022, by Gandhar
+//When a chip configured to listen to UART recieves data, extracts the
+//Integer from the data stream, and writes it to the global variable adcValue
+//*******************************************************************************
+
 #pragma vector = USCIAB0RX_VECTOR
 __interrupt void serial_rx_interrupt(void)
 {
+    //When the Interrupt Flag is tripped
     if (IFG2 & UCA0RXIFG)
     {
         __disable_interrupt();
-        //        P1OUT |= RXLED;
-        //        ser_output("\n--->DEBUG::in interrupt..");
 
+        //Start Reading from UART
         if (UCA0RXBUF == '\r' && rxDataBytesCounter == 0)
         {
-            //            ser_output("\n--->DEBUG::in first if..");
-
+            //Put information into the Buffer
             testBuf[rxDataBytesCounter++] = UCA0RXBUF;
         }
+        //Continue Reading from UART for 25 bytes, which is preset length of the message
+        //This was a solution to noise
         else if (rxDataBytesCounter > 0 && rxDataBytesCounter < 25)
         {
-            //            ser_output("\n--->DEBUG::in second if..");
+            //Put information into the Buffer
             testBuf[rxDataBytesCounter++] = UCA0RXBUF;
         }
+        //When the UART message has reached the correct length
         else if (rxDataBytesCounter >= 25)
         {
-            //            ser_output("\n--->DEBUG::in third if..");
+            //Read the Buffer to adcValue
             sscanf(testBuf, "\r\n#adc_val:%d", &adcValue);
-            //            display_digits((adcValue/3)*3);
             rxDataBytesCounter = 0;
         }
 
-        //    if (UCA0RXBUF == START_BYTE && (startByteCounter == 0 | startByteCounter == 1)) // 'Start bytes' received?
-        //    {
-        //        rxData.rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
-        //        startByteCounter++;
-        //    }
-        //
-        //    else if ((rxDataBytesCounter >0) && (rxDataBytesCounter < RX_DATA_LENGTH) && (startByteCounter == 2))
-        //    {
-        //        rxData.rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
-        //    }
-        //    else if(rxDataBytesCounter == RX_DATA_LENGTH )
-        //    {
-        //        // display ADC VALUE ON LED
-        //        adcValue = (unsigned int)(rxData.dataByte1 << 8 | rxData.dataByte2);
-        //        sprintf(testBuf, "\r\n\nADC VALUE:%d", adcValue);
-        //        ser_output(testBuf);
-        ////        display_digits(adcValue);
-        //        sprintf(testBuf, "\r\n----DEBUG::rxData.dataByte1:%x \t rxData.dataByte2:%x", rxData.dataByte1,rxData.dataByte2);
-        //        ser_output(testBuf);
-        ////        printf(testBuf, "\r\n----DEBBUG::rxData.dataByte2:%x", rxData.dataByte2);
-        ////        ser_output(testBuf);
-        //
-        ////        sprintf(testBuf,rxData.rxBuf);
-        ////        ser_output(testBuf);
-        //        rxDataBytesCounter = 0;
-        //        startByteCounter = 0;
-        //    }
-
-        //    }
         IFG2 &= ~UCA0RXIFG;
-        //        P1OUT &= ~RXLED;
         __enable_interrupt();
     }
 }
@@ -449,7 +407,7 @@ void display_digits(unsigned int val)
             val = 0;
         }
 
-        if(val >= 1005)
+        if(val >= 1000)
         {
             val = 1023;
         }
