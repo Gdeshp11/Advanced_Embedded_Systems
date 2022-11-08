@@ -1,2 +1,3 @@
 # Advanced_Embedded_Systems
-AES Course labs
+
+AES Course projects using Texas Instruments MSP430 Microcontroller
