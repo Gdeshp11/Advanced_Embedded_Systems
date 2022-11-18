@@ -14,8 +14,11 @@
 #include <math.h>
 
 // Ultrasonic sensor pins
-#define TRIGGER_PIN BIT6  //p1.6
+#define TRIGGER_PIN BIT5  //p1.5
 #define ECHO_PIN BIT1 //p2.1
+
+//PWM Output pin for speaker
+#define PWM_OUT_SPEAKER BIT6 //p1.6
 
 //UART PINS
 #define TX_PIN BIT2 //p1.2
@@ -112,6 +115,10 @@ void gpio_setup_rx(void);
 
 void timer_setup(void);
 
+void generate_trigger_signal();
+
+void buzzer(unsigned int cm);
+
 // Timers in MSP430 by drselim
 // Plese don't forget to give credits while sharing this code
 // for the video description for the code:
@@ -138,22 +145,34 @@ void main(void)
 
     while (1)
     {
+        generate_trigger_signal();
+        __delay_cycles(1000000/4);  //0.5 second delay
+
         distance = diff / 58;
-
+        buzzer(distance);
         ser_output("\r\n#distance:%d", distance);
-
-        __delay_cycles(500000);  //0.5 second delay
     }
+}
+
+void generate_trigger_signal()
+{
+    P1OUT|= TRIGGER_PIN;
+    _delay_cycles(10);
+    P1OUT &= ~TRIGGER_PIN;
+//    _delay_cycles(60);
 }
 
 void gpio_setup_tx(void)
 {
 
-    P1DIR = TRIGGER_PIN;
+    //Timer P2SEL
+    P1DIR = TRIGGER_PIN | PWM_OUT_SPEAKER;
     P2SEL = ECHO_PIN;
-    P1SEL = TX_PIN | RX_PIN | TRIGGER_PIN;
+    //UART,PWM P1SEL
+    P1SEL = TX_PIN | RX_PIN | PWM_OUT_SPEAKER;
     P1SEL2 = TX_PIN | RX_PIN;
-
+    // Set TRIGGER (P1.6) pin to LOW initially
+    P1OUT &= ~TRIGGER_PIN;
 }
 
 void gpio_setup_rx(void)
@@ -163,10 +182,13 @@ void gpio_setup_rx(void)
 
 void timer_setup(void)
 {
+    //Timer configuration for generating PWM for speaker using pin p1.6 and timer T0.1
     TA0CTL = TASSEL_2 | MC_1;
-    TA0CCR0 = 0xFFFF;
-    TA0CCR1 = 0x000A;
+    TA0CCR0 = 0;
+    TA0CCR1 = 200;
     TA0CCTL1 = OUTMOD_7;
+
+    //Timer configuration for echo pin (capture/compare) p2.1 using timer T1.1
     TA1CTL = TASSEL_2 | MC_2;
     TA1CCTL1 = CAP | CCIE | CCIS_0 | CM_3 | SCS;
 }
@@ -174,12 +196,14 @@ void timer_setup(void)
 #pragma vector = TIMER1_A1_VECTOR
 __interrupt void timer_interrupt(void)
 {
+    // first interrupt when rising edge
     if (i == 0)
     {
         rising_edge_value = TA1CCR1;
         TA1CCTL1 &= ~CCIFG;
         i = 1;
     }
+    // second interrupt when falling edge
     else if (i == 1)
     {
         falling_edge_value = TA1CCR1;
@@ -187,7 +211,6 @@ __interrupt void timer_interrupt(void)
         diff = falling_edge_value - rising_edge_value;
         i = 0;
     }
-
 }
 
 void uart_init()
@@ -480,5 +503,42 @@ void display_digits(unsigned int val)
         P2OUT = DIGIT_1;
         led_display_num(digit);
         __delay_cycles(DIGDELAY);
+    }
+}
+
+/******************************************************************************
+// Module Function void buzzer(unsigned int cm),
+//Last Revision date 11/16/2022, by Owen
+// Given a distance in cm, activates the buzzer with a certain pitch.
+// Lower distances have higher pitches
+//*******************************************************************************/
+void buzzer(unsigned int cm) {
+    if (cm <= 5)
+    {
+        TA0CCR0  = 300  ; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/300 us) is 3khz.
+    }
+    else if (cm < 10)
+    {
+        TA0CCR0  = 600  ; 
+    }
+    else if (cm >= 10 && cm <= 15)
+    {
+        TA0CCR0  = 1250; 
+    }
+    else if (cm > 15 && cm <= 20)
+    {
+        TA0CCR0  = 2500; 
+    }
+    else if (cm > 20 && cm <= 25)
+    {
+        TA0CCR0  = 5000; 
+    }
+    else if (cm > 25 && cm <= 30)
+    {
+        TA0CCR0  = 10000; 
+    }
+    else
+    {
+        TA0CCR0  = 20000; 
     }
 }
