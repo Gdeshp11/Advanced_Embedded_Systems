@@ -13,6 +13,9 @@
 #include <string.h>
 #include <math.h>
 
+// Input pin to check identify microcontroller (high if Tx and low if Rx)
+#define MC_IDENTIFICATION_PIN BIT5 //p2.5
+
 // Ultrasonic sensor pins
 #define TRIGGER_PIN BIT5  //p1.5
 #define ECHO_PIN BIT1 //p2.1
@@ -40,10 +43,7 @@
 #define g BIT4    //p1.4
 
 #define DIGDELAY 2000 // Number of cycles to delay for displaying each digit in display_digits
-
-volatile unsigned char rxDataBytesCounter = 0, startByteCounter = 0;
-volatile unsigned int adcValue = 0;
-volatile char rxBuf[25];
+#define DELAY_SEC 1000000 //1 sec delay for 1MHz
 
 typedef enum
 {
@@ -83,11 +83,12 @@ void display_digits(unsigned int val);
 void uart_init();
 
 //******************************************************************************
-//Module Function ser_output(char *str)
-//Last Revision date 11/8/2022, by Gandhar
-// function for sending string of information to serial console
+//Module Function serial_write(char *str,...)
+//Last Revision date 11/19/2022, by Gandhar
+// function for sending string of information to serial console.
+// can accept formatted string as argument and then converts it to string.
 //*******************************************************************************
-void ser_output(const char *fmt, ...);
+void serial_write(const char *fmt, ...);
 
 //******************************************************************************
 //Module Function send_data(unsigned int adc_val),
@@ -117,20 +118,19 @@ void timer_setup(void);
 
 void generate_trigger_signal();
 
-void buzzer(unsigned int cm);
+void buzzer(const unsigned int cm);
 
-// Timers in MSP430 by drselim
-// Plese don't forget to give credits while sharing this code
-// for the video description for the code:
-// https://youtu.be/LzOVfDQaol8
+void execute_tx();
+
+void execute_rx();
 
 volatile int rising_edge_value, falling_edge_value;
 volatile int diff;
 volatile unsigned int i = 0;
-int dst_int;
-int dst_flt;
-float tmp_flt;
 volatile int distance;
+volatile unsigned char rxDataBytesCounter = 0;
+volatile unsigned int distance_rx = 0;
+volatile char rxBuf[25];
 
 void main(void)
 {
@@ -138,28 +138,51 @@ void main(void)
     BCSCTL1 = CALBC1_1MHZ;
     DCOCTL = CALDCO_1MHZ;
 
+    P2DIR &= ~MC_IDENTIFICATION_PIN; //set p2.5 as input
+
+    //for UART Tx chip
+    if (P2IN & MC_IDENTIFICATION_PIN)
+    {
+        //execute Tx code
+        execute_tx();
+    }
+    //for UART Rx chip
+    else if (!(P2IN & MC_IDENTIFICATION_PIN))
+    {
+        //execute Rx code
+        execute_rx();
+    }
+}
+
+void execute_tx()
+{
     gpio_setup_tx();
     uart_init();
     timer_setup();
-    _enable_interrupts();
+    __enable_interrupt();
 
     while (1)
     {
         generate_trigger_signal();
-        __delay_cycles(1000000/4);  //0.5 second delay
-
+        __delay_cycles(DELAY_SEC / 3); //1/3 seconds delay
+        // convert distance to cm
         distance = diff / 58;
+        //play alarm on speaker
         buzzer(distance);
-        ser_output("\r\n#distance:%d", distance);
+        serial_write("\r\n#distance:%d", distance);
     }
 }
 
-void generate_trigger_signal()
+void execute_rx()
 {
-    P1OUT|= TRIGGER_PIN;
-    _delay_cycles(10);
-    P1OUT &= ~TRIGGER_PIN;
-//    _delay_cycles(60);
+    // need to initialize uart before enabling uart interrupt otherwise interrupt doesn't work
+    uart_init();
+    gpio_setup_rx();
+    __enable_interrupt();
+    while (1)
+    {
+        display_digits(distance_rx);
+    }
 }
 
 void gpio_setup_tx(void)
@@ -169,15 +192,30 @@ void gpio_setup_tx(void)
     P1DIR = TRIGGER_PIN | PWM_OUT_SPEAKER;
     P2SEL = ECHO_PIN;
     //UART,PWM P1SEL
-    P1SEL = TX_PIN | RX_PIN | PWM_OUT_SPEAKER;
-    P1SEL2 = TX_PIN | RX_PIN;
+    P1SEL = TX_PIN | PWM_OUT_SPEAKER;
+    P1SEL2 = TX_PIN;
     // Set TRIGGER (P1.6) pin to LOW initially
     P1OUT &= ~TRIGGER_PIN;
 }
 
 void gpio_setup_rx(void)
 {
+    P2DIR |= DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4 + a;
+    P1DIR |= b + c + d + e + f + g;
+    P1SEL = TX_PIN | RX_PIN;
+    P1SEL2 = TX_PIN | RX_PIN;
+    P2SEL &= ~BIT6;  //enable p2.6 as gpio
+    P2SEL &= ~BIT7;  //enable p2.7 as gpio
+    P2OUT &= ~(DIGIT_1 + DIGIT_2 + DIGIT_3 + DIGIT_4); // all digits off by default
+    UC0IE |= UCA0RXIE; // Enable USCI_A0 RX interrupt
+}
 
+void generate_trigger_signal()
+{
+    P1OUT |= TRIGGER_PIN;
+    _delay_cycles(10);
+    P1OUT &= ~TRIGGER_PIN;
+//    _delay_cycles(60);
 }
 
 void timer_setup(void)
@@ -222,14 +260,7 @@ void uart_init()
     UCA0CTL1 &= ~UCSWRST;
 }
 
-void send_data(const unsigned int distance)
-{
-    char txBuf_arr[20];
-    sprintf(txBuf_arr, "\r\n#distance:%d", distance);
-    ser_output(txBuf_arr);
-}
-
-void ser_output(const char *fmt, ...)
+void serial_write(const char *fmt, ...)
 {
     va_list args;
     va_start(args, fmt);
@@ -246,39 +277,31 @@ void ser_output(const char *fmt, ...)
     }
 }
 
-//#pragma vector = USCIAB0RX_VECTOR
-//__interrupt void serial_rx_interrupt(void)
-//{
-//    //When the Interrupt Flag is tripped
-//    if (IFG2 & UCA0RXIFG)
-//    {
-//        __disable_interrupt();
-//
-//        //Start Reading from UART
-//        if (UCA0RXBUF == '\r' && rxDataBytesCounter == 0)
-//        {
-//            //Put information into the Buffer
-//            rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
-//        }
-//        //Continue Reading from UART for 25 bytes, which is preset length of the message
-//        //This was a solution to noise
-//        else if (rxDataBytesCounter > 0 && rxDataBytesCounter < 25)
-//        {
-//            //Put information into the Buffer
-//            rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
-//        }
-//        //When the UART message has reached the correct length
-//        else if (rxDataBytesCounter >= 25)
-//        {
-//            //Read the Buffer to adcValue
-//            sscanf(rxBuf, "\r\n#distance:%d", &adcValue);
-//            rxDataBytesCounter = 0;
-//        }
-//
-//        IFG2 &= ~UCA0RXIFG;
-//        __enable_interrupt();
-//    }
-//}
+#pragma vector = USCIAB0RX_VECTOR
+__interrupt void serial_rx_interrupt(void)
+{
+    if (IFG2 & UCA0RXIFG)
+    {
+        __disable_interrupt();
+
+        if (UCA0RXBUF == '\r' && rxDataBytesCounter == 0)
+        {
+            rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
+        }
+        else if (rxDataBytesCounter > 0 && rxDataBytesCounter < 25)
+        {
+            rxBuf[rxDataBytesCounter++] = UCA0RXBUF;
+        }
+        else if (rxDataBytesCounter >= 25)
+        {
+            sscanf(rxBuf, "\r\n#distance:%d", &distance_rx);
+            rxDataBytesCounter = 0;
+        }
+
+        IFG2 &= ~UCA0RXIFG;
+        __enable_interrupt();
+    }
+}
 
 void led_display_num(const unsigned val)
 {
@@ -429,20 +452,8 @@ void lit_led_segment(LED_SEGMENTS segment)
 
 void display_digits(unsigned int val)
 {
-    //As per Discussion with Joey 11/7/2022
-    if (val <= 16)
-    {
-        val = 0;
-    }
-
-    if (val >= 1000)
-    {
-        val = 1023;
-    }
-
     unsigned int digit = 0;
     unsigned int number = val;
-    volatile unsigned int i;
 
     if (val >= 0 && val <= 9)
     {
@@ -506,39 +517,40 @@ void display_digits(unsigned int val)
     }
 }
 
-/******************************************************************************
+//******************************************************************************
 // Module Function void buzzer(unsigned int cm),
 //Last Revision date 11/16/2022, by Owen
 // Given a distance in cm, activates the buzzer with a certain pitch.
 // Lower distances have higher pitches
-//*******************************************************************************/
-void buzzer(unsigned int cm) {
+//********************************************************************************
+void buzzer(const unsigned int cm)
+{
     if (cm <= 5)
     {
-        TA0CCR0  = 300  ; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/300 us) is 3khz.
+        TA0CCR0 = 300; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
     else if (cm < 10)
     {
-        TA0CCR0  = 600  ; 
+        TA0CCR0 = 600; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
     else if (cm >= 10 && cm <= 15)
     {
-        TA0CCR0  = 1250; 
+        TA0CCR0 = 1250; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
     else if (cm > 15 && cm <= 20)
     {
-        TA0CCR0  = 2500; 
+        TA0CCR0 = 2500; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
     else if (cm > 20 && cm <= 25)
     {
-        TA0CCR0  = 5000; 
+        TA0CCR0 = 5000; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
     else if (cm > 25 && cm <= 30)
     {
-        TA0CCR0  = 10000; 
+        TA0CCR0 = 10000; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
     else
     {
-        TA0CCR0  = 20000; 
+        TA0CCR0 = 20000; //Set the period in the Timer A0 Capture/Compare 0 register to 2000 us (1/2000 us) is 500hz.
     }
 }
