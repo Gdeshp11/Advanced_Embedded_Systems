@@ -42,7 +42,7 @@
 #define f BIT6    //p1.6
 #define g BIT4    //p1.4
 
-#define DIGDELAY 2000 // Number of cycles to delay for displaying each digit in display_digits
+#define DIGDELAY 3000 // Number of cycles to delay for displaying each digit in display_digits
 #define DELAY_SEC 1000000 //1 sec delay for 1MHz
 
 typedef enum
@@ -192,8 +192,8 @@ void gpio_setup_tx(void)
     P1DIR = TRIGGER_PIN | PWM_OUT_SPEAKER;
     P2SEL = ECHO_PIN;
     //UART,PWM P1SEL
-    P1SEL = TX_PIN | PWM_OUT_SPEAKER;
-    P1SEL2 = TX_PIN;
+    P1SEL = TX_PIN | RX_PIN | PWM_OUT_SPEAKER;
+    P1SEL2 = TX_PIN | RX_PIN;
     // Set TRIGGER (P1.6) pin to LOW initially
     P1OUT &= ~TRIGGER_PIN;
 }
