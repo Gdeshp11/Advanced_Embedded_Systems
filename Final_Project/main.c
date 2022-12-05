@@ -89,7 +89,9 @@ void update_distance_preset(void);
 void show_presets(unsigned int preset_distance);
 void configure_adc();
 void read_adc(unsigned int *x_axis, unsigned int *y_axis);
-unsigned int read_adc_running_average_filter(unsigned int raw_adc_val,unsigned int oldaverage,unsigned int weight);
+unsigned int read_adc_running_average_filter(unsigned int raw_adc_val,
+                                             unsigned int oldaverage,
+                                             unsigned int weight);
 
 volatile int rising_edge_value, falling_edge_value;
 volatile int diff;
@@ -97,12 +99,13 @@ volatile unsigned int i = 0;
 volatile int distance;
 volatile unsigned char rxDataBytesCounter = 0;
 volatile unsigned int distance_rx = 0, x_axis_val = 0, y_axis_val = 0;
+volatile unsigned int x_axis_val_rx = 0, y_axis_val_rx = 0;
 volatile char rxBuf[25];
-unsigned int distance_presets[NUM_DISTANCE_PRESETS] = { 5, 25, 50, 100, 250 }; //distances in cm
+volatile unsigned int distance_presets[NUM_DISTANCE_PRESETS] = { 5, 25, 50, 100, 250 }; //distances in cm
 unsigned int current_distance_preset_index = 0;
 unsigned int current_distance_preset = 5;
 unsigned int adc_values[3];
-volatile unsigned char show_preset_flag = 0;
+volatile unsigned char show_preset_flag,is_ready = 0;
 
 void main(void)
 {
@@ -155,15 +158,15 @@ void execute_tx()
         }
         case (LEVELLING_MODE):
         {
-//            TA0CCR0 = 0;
             unsigned int accl_x = 0, accl_y = 0;
             read_adc(&accl_x, &accl_y);
-            accl_x = read_adc_running_average_filter(accl_x,oldaverage_x,10);
-            accl_y = read_adc_running_average_filter(accl_y,oldaverage_y,10);
+            accl_x = read_adc_running_average_filter(accl_x, oldaverage_x, 10);
+            accl_y = read_adc_running_average_filter(accl_y, oldaverage_y, 10);
             oldaverage_x = accl_x;
             oldaverage_y = accl_y;
             serial_write("\r\n#level x:%d, y:%d", accl_x, accl_y);
-            if(((abs(accl_x - 490)>=0) && (abs(accl_x - 490)<=10)) && (abs(accl_y - 490)>=0 && abs(accl_y-490)<=10))
+            if (((abs(accl_x - 490) >= 0) && (abs(accl_x - 490) <= 10))
+                    && (abs(accl_y - 490) >= 0 && abs(accl_y - 490) <= 10))
             {
                 buzzer_levelling_mode();
             }
@@ -193,26 +196,34 @@ void execute_rx()
     gpio_setup_rx();
     __enable_interrupt();
     // show first preset distance in beginning
-    show_presets(distance_presets[0]);
-    show_presets(distance_presets[1]);
-    show_presets(distance_presets[2]);
-    show_presets(distance_presets[3]);
-    show_presets(distance_presets[4]);
+   show_presets(0);
     while (1)
     {
         switch (current_mode)
         {
         case DISTANCE_MEASURING_MODE:
         {
-            display_digits(distance_rx);
+//            if(show_preset_flag)
+//            {
+//                show_presets(0);
+//                show_preset_flag = 0;
+//            }
+            if(is_ready)
+            {
+                display_digits(distance_rx);
+            }
             break;
         }
         case LEVELLING_MODE:
         {
-            display_axis_info(abs(x_axis_val-490), abs(y_axis_val-490));
-//            display_digits(x_axis_val);
+            if(is_ready)
+            {
+                display_axis_info(abs(x_axis_val_rx-490), abs(y_axis_val_rx-490));
+            }
+//            display_axis_info(45, 90);
+//            display_digits(abs(x_axis_val-490));
 //            __delay_cycles(DELAY_SEC*3);
-//            display_digits(y_axis_val);
+//            display_digits(abs(y_axis_val-490));
             break;
         }
         default:
@@ -340,7 +351,7 @@ __interrupt void button_interrupt(void)
     {
     case PRESET_BUTTON:
     {
-        if(current_mode == DISTANCE_MEASURING_MODE)
+        if (current_mode == DISTANCE_MEASURING_MODE)
         {
             update_distance_preset();
         }
@@ -348,8 +359,13 @@ __interrupt void button_interrupt(void)
     }
     case MODE_BUTTON:
     {
-        current_mode = (current_mode == DISTANCE_MEASURING_MODE) ?
+        current_mode =
+                (current_mode == DISTANCE_MEASURING_MODE) ?
                         LEVELLING_MODE : DISTANCE_MEASURING_MODE;
+//        if(current_mode == DISTANCE_MEASURING_MODE)
+//        {
+//            show_preset_flag = 1;
+//        }
         break;
     }
     default:
@@ -368,8 +384,8 @@ void configure_adc()
 {
 
 //    ADC10CTL1 = INCH_3 + ADC10DIV_3; // Channel 7, ADC10CLK/3
-    ADC10CTL0 = SREF_0 + ADC10SHT_3 + ADC10ON ; // Vcc & Vss as reference,
-   //Sample and hold for 64 Clock cycles, ADC on, ADC interrupt enable
+    ADC10CTL0 = SREF_0 + ADC10SHT_3 + ADC10ON; // Vcc & Vss as reference,
+    //Sample and hold for 64 Clock cycles, ADC on, ADC interrupt enable
 //    ADC10AE0 |= ACCL_INPUT_Y; // set p1.7 as adc input pin
 }
 
@@ -381,13 +397,15 @@ void read_adc(unsigned int *x_axis, unsigned int *y_axis)
 {
     ADC10CTL1 = ADC10DIV_3 + INCH_3; // Channel 3, ADC10CLK/3
     ADC10AE0 = ACCL_INPUT_X;
-    while (ADC10CTL1 & ADC10BUSY);
+    while (ADC10CTL1 & ADC10BUSY)
+        ;
     ADC10CTL0 |= ENC + ADC10SC; // Sampling and conversion start
     *x_axis = ADC10MEM;         // read x_axis value from ADC
     __delay_cycles(100);
     ADC10CTL1 = ADC10DIV_3 + INCH_4; // channel 4
     ADC10AE0 = ACCL_INPUT_Y;
-    while (ADC10CTL1 & ADC10BUSY);
+    while (ADC10CTL1 & ADC10BUSY)
+        ;
     ADC10CTL0 |= ENC + ADC10SC; // Sampling and conversion start
     *y_axis = ADC10MEM;         // read y_axis value from ADC
 }
@@ -397,7 +415,8 @@ void read_adc(unsigned int *x_axis, unsigned int *y_axis)
 //Taking the old average, and the weight, which is set above, calculates the new running average
 //The higher the weight, the more oscillations are damped down
 //*******************************************************************************
-unsigned int read_adc_running_average_filter(unsigned int raw_adc_val,unsigned int oldaverage,
+unsigned int read_adc_running_average_filter(unsigned int raw_adc_val,
+                                             unsigned int oldaverage,
                                              unsigned int weight)
 {
     unsigned int average = (oldaverage * weight + raw_adc_val) / (weight + 1); //Simple running average formula
@@ -462,11 +481,12 @@ __interrupt void serial_rx_interrupt(void)
             {
                 current_mode = DISTANCE_MEASURING_MODE;
             }
-            else if (sscanf(rxBuf, "\r\n#level x:%d, y:%d", &x_axis_val,
-                            &y_axis_val))
+            else if (sscanf(rxBuf, "\r\n#level x:%d, y:%d", &x_axis_val_rx,
+                            &y_axis_val_rx))
             {
                 current_mode = LEVELLING_MODE;
             }
+            is_ready = 1;
 //            else if (sscanf(rxBuf, "\r\n#preset:%d",&distance_rx))
 //            {
 //                show_preset_flag = 1;
@@ -635,11 +655,43 @@ void lit_led_segment(LED_SEGMENTS segment)
     }
 }
 
+void display_num_cont(unsigned int num,unsigned int delay)
+{
+    for(i=0;i<delay;i++)
+    {
+        int j=0;
+        for(j=0;j<delay;j++)
+        {
+            display_digits(num);
+        }
+    }
+}
+
 void show_presets(unsigned int preset_distance)
 {
-    display_digits(preset_distance);
-    __delay_cycles(DELAY_SEC * 2);
-    show_preset_flag = 0;
+    volatile unsigned int j=0;
+    while(1)
+    {
+        unsigned int i = 0;
+        if(j == 5) return;
+        switch(j)
+        {
+            case 0: display_num_cont(5,300);
+                    break;
+            case 1: display_num_cont(25,300);
+                    break;
+            case 2: display_num_cont(50,300);
+                    break;
+            case 3: display_num_cont(100,300);
+                    break;
+            case 4: display_num_cont(250,300);
+                    break;
+            default: break;
+        }
+
+
+        j++;
+    }
 }
 
 //******************************************************************************
@@ -719,7 +771,38 @@ void display_digits(unsigned int val)
 
 void display_axis_info(unsigned int x_axis_val, unsigned int y_axis_val)
 {
-    if (x_axis_val >= 0 && x_axis_val <= 9)
+    if (x_axis_val == 0)
+    {
+        P2OUT = DIGIT_2;
+        led_display_num(0);
+        __delay_cycles(DIGDELAY);
+    }
+    if (y_axis_val == 0)
+    {
+        P2OUT = DIGIT_4;
+        led_display_num(0);
+        __delay_cycles(DIGDELAY);
+    }
+
+    if (y_axis_val <= 9)
+    {
+        // If the number is less than 10, turn on
+        // first digit and display the value
+        P2OUT = DIGIT_4;
+        led_display_num(y_axis_val);
+        __delay_cycles(DIGDELAY);
+    }
+    else if (y_axis_val >= 10 && y_axis_val <= 99)
+    {
+        P2OUT = DIGIT_4;
+        led_display_num(y_axis_val % 10);
+        __delay_cycles(DIGDELAY);
+        P2OUT = DIGIT_3;
+        led_display_num((y_axis_val / 10) % 10);
+        __delay_cycles(DIGDELAY);
+    }
+
+    if (x_axis_val <= 9)
     {
         // If the number is less than 10, turn on
         // first digit and display the value
@@ -734,24 +817,6 @@ void display_axis_info(unsigned int x_axis_val, unsigned int y_axis_val)
         __delay_cycles(DIGDELAY);
         P2OUT = DIGIT_1;
         led_display_num((x_axis_val / 10) % 10);
-        __delay_cycles(DIGDELAY);
-    }
-
-    if (y_axis_val >= 0 && y_axis_val <= 9)
-    {
-        // If the number is less than 10, turn on
-        // first digit and display the value
-        P2OUT = DIGIT_4;
-        led_display_num(x_axis_val);
-        __delay_cycles(DIGDELAY);
-    }
-    else if (y_axis_val >= 10 && y_axis_val <= 99)
-    {
-        P2OUT = DIGIT_4;
-        led_display_num(y_axis_val % 10);
-        __delay_cycles(DIGDELAY);
-        P2OUT = DIGIT_3;
-        led_display_num((y_axis_val / 10) % 10);
         __delay_cycles(DIGDELAY);
     }
 }
